@@ -42,10 +42,7 @@ def answer_query(query):
     context = "\n".join([doc.page_content for doc in relevant_docs])
     prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
     response = model.generate_content(prompt, stream=True)
-
-    for no, chunk in enumerate(response, start=1):
-        print(chunk.text, end="", flush=True)
-        
+    
     return response
 
 

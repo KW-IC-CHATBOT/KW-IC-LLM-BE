@@ -2,6 +2,12 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from typing import List
+from llm import answer_query
+import logging 
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger("main")
+
 
 app = FastAPI()
 
@@ -38,8 +44,13 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            data = await websocket.receive_text()
-            await manager.send_personal_message(f"Server response: {data}", websocket)
+            query = await websocket.receive_text()
+            
+            response = answer_query(query)
+            for chunk in response:
+                logger.debug(f"chunk: {chunk.text}")
+                await manager.send_personal_message(chunk.text, websocket)
+            
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
