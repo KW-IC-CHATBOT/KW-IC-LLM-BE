@@ -1,2 +1,10 @@
 fastapi
 uvicorn
+langchain
+langchain-google-genai
+faiss-cpu
+google-generativeai
+langchain-community
+langchain-huggingface
+python-multipart
+websockets
