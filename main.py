@@ -51,8 +51,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.debug(f"chunk: {chunk.text}")
                 await manager.send_personal_message(chunk.text, websocket)
             
+            await manager.send_personal_message("[EOS]", websocket)
+            
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=50521)
+    uvicorn.run(app, host="0.0.0.0", port=35501)
