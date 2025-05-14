@@ -74,6 +74,7 @@ class ChatLogger:
     
     def log_query(self, query):
         """사용자 쿼리 로깅"""
+        print(f"[DEBUG] log_query called: {query}")  # 디버깅용 출력
         self.log_chat(f"User Query: {query}")
     
     def log_response(self, response):
