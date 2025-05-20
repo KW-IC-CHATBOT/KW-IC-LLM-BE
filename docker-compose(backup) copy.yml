@@ -1,0 +1,18 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kw_ic_llm_server
+    ports:
+      - "35504:35504"
+    restart: unless-stopped
+    network_mode: "host"
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+
+networks:
+  kw_ic_llm_network:
+    driver: bridge
