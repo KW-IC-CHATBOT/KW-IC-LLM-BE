@@ -8,3 +8,6 @@ langchain-community
 langchain-huggingface
 python-multipart
 websockets
+psycopg2-binary
+sqlalchemy
+python-dotenv

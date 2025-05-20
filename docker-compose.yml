@@ -1,18 +1,38 @@
+version: "3.8"
 services:
+  db:
+    image: postgres:15 # 원하는 버전 지정
+    container_name: kw_ic_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: icuser # DB 사용자
+      POSTGRES_PASSWORD: icpass # 비밀번호
+      POSTGRES_DB: icllm_db # 생성할 기본 DB
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # 호스트 ↔ 컨테이너 포트 매핑
+    networks:
+      - kw_ic_llm_network
+
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: kw_ic_llm_server
+    depends_on:
+      - db # db가 먼저 올라오도록 보장
+    environment:
+      DATABASE_URL: postgres://icuser:icpass@db:5432/icllm_db
     ports:
       - "35504:35504"
     restart: unless-stopped
-    network_mode: "host"
-    deploy:
-      replicas: 1
-      update_config:
-        order: start-first
+    networks:
+      - kw_ic_llm_network
 
 networks:
   kw_ic_llm_network:
     driver: bridge
+
+volumes:
+  pgdata:
