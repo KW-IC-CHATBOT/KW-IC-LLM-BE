@@ -1,10 +1,15 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from typing import List
 from llm import answer_query
 from logger_config import ChatLogger
 import logging
+from sqlalchemy.orm import Session
+from models.database import get_db
+from models.models import ChatMessage as ChatMessageModel
+from models.schemas import ChatLogRequest, ChatLogResponse
+from datetime import datetime
 
 app = FastAPI()
 
@@ -42,6 +47,27 @@ manager = ConnectionManager()
 async def root():
     return "good!"
 
+@app.post("/log/chat", response_model=ChatLogResponse)
+async def log_chat(chat_log: ChatLogRequest, db: Session = Depends(get_db)):
+    try:
+        db_chat = ChatMessageModel(
+            session_id=chat_log.session_id,
+            message=chat_log.message,
+            response=chat_log.response,
+            tokens_used=chat_log.tokens_used,
+            processing_time=chat_log.processing_time,
+            model_used=chat_log.model_used,
+            error_occurred=chat_log.error_occurred,
+            error_message=chat_log.error_message
+        )
+        db.add(db_chat)
+        db.commit()
+        db.refresh(db_chat)
+        return db_chat
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     # 각 연결마다 고유한 로거 생성
@@ -55,7 +81,9 @@ async def websocket_endpoint(websocket: WebSocket):
             
             try:
                 response = answer_query(query)
+                full_response = ""
                 for chunk in response:
+                    full_response += chunk.text
                     logger.log_response(chunk.text)
                     await manager.send_personal_message(chunk.text, websocket)
                 
