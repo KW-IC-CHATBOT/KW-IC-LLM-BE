@@ -1,5 +1,5 @@
-# Use Python 3.9 slim as base image
-FROM python:3.12-slim
+# Use Python 3.10 slim as base image
+FROM python:3.10-slim
 
 # Set working directory
 WORKDIR /app
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt 
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy .env file
 COPY .env .
@@ -33,4 +33,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 35504
 
 # Command to run the application
-CMD ["python", "main.py"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "35504", "--workers", "4"]
