@@ -4,7 +4,7 @@ import uvicorn
 from typing import List
 from llm import answer_query
 from logger_config import ChatLogger
-import logging
+import logging 
 from sqlalchemy.orm import Session
 from models.database import get_db
 from models.models import ChatMessage as ChatMessageModel
@@ -46,6 +46,14 @@ manager = ConnectionManager()
 @app.get("/")
 async def root():
     return "good!"
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "active_connections": len(manager.active_connections)
+    }
 
 @app.post("/log/chat", response_model=ChatLogResponse)
 async def log_chat(chat_log: ChatLogRequest, db: Session = Depends(get_db)):

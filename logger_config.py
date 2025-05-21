@@ -22,110 +22,68 @@ ERROR_LOG_FORMAT = "%(asctime)s - %(levelname)s - [User: %(user_id)s] - %(messag
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 class ChatLogger:
-    def __init__(self, user_id="anonymous"):
-        # DATABASE_URL 환경 변수 읽기 및 파싱
-        db_url = os.getenv("DATABASE_URL")
-        if not db_url:
-            self.db_config = None
-            print("DATABASE_URL environment variable not set.") # 초기 에러 메시지 (로거 사용 전)
-        else:
-            try:
-                result = urlparse(db_url)
-                self.db_config = {
-                    "dbname": result.path[1:], # 경로에서 '/' 제거
-                    "user": result.username,
-                    "password": result.password,
-                    "host": result.hostname,
-                    "port": result.port or 5432 # 포트가 없으면 기본값 5432
-                }
-            except Exception as e:
-                self.db_config = None
-                print(f"Error parsing DATABASE_URL: {e}") # 초기 에러 메시지
-
-        # 데이터베이스 연결 객체
-        self.conn = None
-        self._connect_db() # 초기 연결 시도
-
-        # DB 연결 성공 시에만 테이블 초기화 시도
-        if self.conn:
-            self._init_db() # 테이블 초기화
-
+    def __init__(self, user_id: str):
         self.user_id = user_id
-        self.logger = logging.getLogger(f"chat_{user_id}")
-        self.logger.setLevel(logging.DEBUG)
-
-        # 파일 로깅 핸들러 (기존 코드 유지)
-        chat_handler = RotatingFileHandler(
-            CHAT_LOG_FILE,
-            maxBytes=10*1024*1024,  # 10MB
-            backupCount=5,
-            encoding='utf-8'
-        )
-        chat_handler.setLevel(logging.INFO)
-        chat_formatter = logging.Formatter(CHAT_LOG_FORMAT, DATE_FORMAT)
-        chat_handler.setFormatter(chat_formatter)
-
-        error_handler = RotatingFileHandler(
-            ERROR_LOG_FILE,
-            maxBytes=10*1024*1024,
-            backupCount=5,
-            encoding='utf-8'
-        )
-        error_handler.setLevel(logging.ERROR)
-        error_formatter = logging.Formatter(ERROR_LOG_FORMAT, DATE_FORMAT)
-        error_handler.setFormatter(error_formatter)
-
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        console_formatter = logging.Formatter(CHAT_LOG_FORMAT, DATE_FORMAT)
-        console_handler.setFormatter(console_formatter)
-
-        # 핸들러 추가
-        self.logger.addHandler(chat_handler)
-        self.logger.addHandler(error_handler)
-        self.logger.addHandler(console_handler)
-
-    def _connect_db(self):
-        """데이터베이스 연결"""
-        if self.conn is not None and not self.conn.closed:
-             return # 이미 연결되어 있으면 다시 연결하지 않음
-
-        if not self.db_config:
-             # DATABASE_URL 설정 문제로 db_config가 없는 경우
-             return
-
+        self.logger = logging.getLogger(f"chat_logger_{user_id}")
+        self.logger.setLevel(logging.INFO)
+        
+        # 로거가 이미 핸들러를 가지고 있다면 중복 추가하지 않음
+        if not self.logger.handlers:
+            # 파일 핸들러 설정
+            file_handler = logging.FileHandler(f'logs/chat_{user_id}.log')
+            file_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
+            
+            # 콘솔 핸들러 설정
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(logging.INFO)
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
+        
+        self.db = None
         try:
-            # 환경 변수가 모두 설정되었는지 확인 (파싱 결과 확인)
-            if not all(self.db_config.values()):
-                 self.logger.error("PostgreSQL connection details incomplete from DATABASE_URL.")
-                 self.conn = None
-                 return
-
-            self.conn = psycopg2.connect(**self.db_config)
-            self.conn.autocommit = True # 자동 커밋 설정
-            self.logger.info("PostgreSQL database connected")
-        except psycopg2.OperationalError as e:
-            self.logger.error(f"Error connecting to PostgreSQL database: {e}")
-            self.conn = None
+            self.connect_db()
         except Exception as e:
-            self.logger.error(f"Unexpected error connecting to database: {e}")
-            self.conn = None
+            self.logger.warning(f"Database connection failed: {str(e)}. Continuing without database logging.")
+
+    def connect_db(self):
+        try:
+            self.db = psycopg2.connect(
+                host=os.getenv('PG_HOST', 'localhost'),
+                port=os.getenv('PG_PORT', '5432'),
+                dbname=os.getenv('PG_DBNAME', 'postgres'),
+                user=os.getenv('PG_USER', 'postgres'),
+                password=os.getenv('PG_PASSWORD', 'whffu18')
+            )
+            self.logger.info("PostgreSQL database connection established")
+            self._init_db()
+        except Exception as e:
+            self.logger.error(f"Failed to connect to PostgreSQL: {str(e)}", exc_info=True)
+            raise
 
     def close_db(self):
-        """데이터베이스 연결 종료"""
-        if self.conn and not self.conn.closed:
-            self.conn.close()
-            self.logger.info("PostgreSQL database connection closed")
-            self.conn = None
+        if self.db:
+            try:
+                self.db.close()
+                self.logger.info("PostgreSQL database connection closed")
+            except Exception as e:
+                self.logger.error(f"Error closing database connection: {str(e)}", exc_info=True)
+
+    def __del__(self):
+        try:
+            self.close_db()
+        except Exception as e:
+            print(f"Error in ChatLogger destructor: {str(e)}")
 
     def _init_db(self):
         """데이터베이스 테이블 생성 (테이블이 없을 경우)"""
-        self._connect_db() # 연결 확인
-        if not self.conn:
+        if not self.db:
             return
 
         try:
-            cursor = self.conn.cursor()
+            cursor = self.db.cursor()
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS chat_logs (
                     id SERIAL PRIMARY KEY,
@@ -137,31 +95,26 @@ class ChatLogger:
                     details TEXT
                 )
             ''')
+            self.db.commit()
             self.logger.info("chat_logs table checked/created")
         except Exception as e:
             self.logger.error(f"Error initializing database table: {e}", exc_info=True)
 
     def _log_to_db(self, level, log_type, message, details=None):
         """데이터베이스에 로그 저장"""
-        self._connect_db() # 연결 확인
-        if not self.conn:
-            self.logger.error("Cannot log to DB: Database connection not available.")
+        if not self.db:
             return
 
         try:
-            cursor = self.conn.cursor()
-            # TIMESTAMP WITH TIME ZONE 형식에 맞게 현재 시간 생성
+            cursor = self.db.cursor()
             timestamp = datetime.now()
             cursor.execute('''
                 INSERT INTO chat_logs (timestamp, user_id, log_level, log_type, message, details)
                 VALUES (%s, %s, %s, %s, %s, %s)
             ''', (timestamp, self.user_id, level, log_type, message, details))
-            # autocommit = True 설정으로 commit 생략 가능
-            # self.conn.commit()
-            # self.logger.debug(f"Logged to DB: {log_type} - {message[:50]}...") # 디버깅용
+            self.db.commit()
         except Exception as e:
             self.logger.error(f"Error logging to database: {e}", exc_info=True)
-            # 데이터베이스 에러 발생 시 연결 끊고 다음 시도 시 재연결하도록 함
             self.close_db()
 
     # 기존 로깅 메서드 수정 (데이터베이스 로깅 추가)

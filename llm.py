@@ -72,7 +72,6 @@ def answer_query(query):
         logger.log_chat("Response generation completed")
         
         return response
-        
     except Exception as e:
         logger.log_error(f"Error in answer_query: {str(e)}", exc_info=True)
         raise
