@@ -56,7 +56,7 @@ except Exception as e:
     logger.log_error(f"Failed to initialize Gemini model: {str(e)}", exc_info=True)
     raise
 
-def answer_query(query):
+def answer_query(query, chat_history=None):
     logger.log_chat(f"Processing query: {query}")
     
     try:
@@ -65,7 +65,15 @@ def answer_query(query):
         logger.log_chat(f"Found {len(relevant_docs)} relevant documents", level=logging.DEBUG)
         
         context = "\n".join([doc.page_content for doc in relevant_docs])
-        prompt = f"Context:\n{context}\n\nQuestion: {query}\nAnswer:"
+        
+        history_text = ""
+        if chat_history:
+            history_text = "\nPrevious conversation:\n" + "\n".join([
+                f"Human: {msg['query']}\nAssistant: {msg['response']}"
+                for msg in chat_history
+            ]) + "\n"
+        
+        prompt = f"Context:\n{context}\n{history_text}\nQuestion: {query}\nAnswer:"
         
         logger.log_chat("Generating response with Gemini model", level=logging.DEBUG)
         response = model.generate_content(prompt, stream=True)

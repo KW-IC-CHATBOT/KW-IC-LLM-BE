@@ -25,21 +25,36 @@ app.add_middleware(
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
+        self.chat_histories: dict = {}  # Store chat histories per connection
         self.logger = ChatLogger("system")
         self.logger.log_chat("ConnectionManager initialized")
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        self.chat_histories[id(websocket)] = []  # Initialize empty chat history
         self.logger.log_chat(f"New client connected. Total connections: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
+        if id(websocket) in self.chat_histories:
+            del self.chat_histories[id(websocket)]  # Clean up chat history
         self.logger.log_chat(f"Client disconnected. Remaining connections: {len(self.active_connections)}")
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
         self.logger.log_chat(f"Message sent: {message[:100]}...", level=logging.DEBUG)
+
+    def add_to_history(self, websocket: WebSocket, query: str, response: str):
+        if id(websocket) not in self.chat_histories:
+            self.chat_histories[id(websocket)] = []
+        self.chat_histories[id(websocket)].append({
+            "query": query,
+            "response": response
+        })
+
+    def get_chat_history(self, websocket: WebSocket):
+        return self.chat_histories.get(id(websocket), [])
 
 manager = ConnectionManager()
 
@@ -88,12 +103,16 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.log_query(query)
             
             try:
-                response = answer_query(query)
+                chat_history = manager.get_chat_history(websocket)
+                response = answer_query(query, chat_history)
                 full_response = ""
+                
                 for chunk in response:
                     full_response += chunk.text
                     logger.log_response(chunk.text)
                     await manager.send_personal_message(chunk.text, websocket)
+                
+                manager.add_to_history(websocket, query, full_response)
                 
                 await manager.send_personal_message("[EOS]", websocket)
                 logger.log_chat("Response streaming completed")
