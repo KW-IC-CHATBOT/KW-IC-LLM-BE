@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 from logger_config import ChatLogger
 import logging
+from prompt_security import PromptSecurity
 
 # 로거 설정
 logger = ChatLogger("llm")
@@ -66,14 +67,18 @@ def answer_query(query, chat_history=None):
         
         context = "\n".join([doc.page_content for doc in relevant_docs])
         
-        history_text = ""
-        if chat_history:
-            history_text = "\nPrevious conversation:\n" + "\n".join([
-                f"Human: {msg['query']}\nAssistant: {msg['response']}"
-                for msg in chat_history
-            ]) + "\n"
-        
-        prompt = f"Context:\n{context}\n{history_text}\nQuestion: {query}\nAnswer:"
+        # 보안이 적용된 프롬프트 생성
+        try:
+            prompt = PromptSecurity.create_safe_prompt(context, query, chat_history)
+        except ValueError as e:
+            logger.log_error(f"Security check failed: {str(e)}")
+            # 에러 메시지를 생성 모델을 통해 반환
+            error_prompt = (
+                "You are a helpful AI assistant. Please provide a polite error message "
+                "explaining that the input was too long or contained potentially harmful content. "
+                "Keep the message brief and professional."
+            )
+            return model.generate_content(error_prompt, stream=True)
         
         logger.log_chat("Generating response with Gemini model", level=logging.DEBUG)
         response = model.generate_content(prompt, stream=True)
