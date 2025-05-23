@@ -25,44 +25,71 @@ if not api_key:
     raise ValueError("GEMINI_API key not found in .env file")
 
 class SentenceTransformerEmbeddings(Embeddings):
+    _instance = None
+    _model = None
+
+    def __new__(cls, model_name):
+        if cls._instance is None:
+            cls._instance = super(SentenceTransformerEmbeddings, cls).__new__(cls)
+            cls._instance.model_name = model_name
+        return cls._instance
+
     def __init__(self, model_name):
-        logger.log_chat(f"Initializing SentenceTransformer with model: {model_name}")
-        self.model = SentenceTransformer(model_name)
+        if self._model is None:
+            logger.log_chat(f"Initializing SentenceTransformer with model: {model_name}")
+            self._model = SentenceTransformer(model_name)
         
     def embed_documents(self, texts):
         logger.log_chat(f"Embedding {len(texts)} documents", level=logging.DEBUG)
-        return self.model.encode(texts)
+        return self._model.encode(texts)
     
     def embed_query(self, text):
         logger.log_chat(f"Embedding query: {text[:100]}...", level=logging.DEBUG)
-        return self.model.encode(text)
+        return self._model.encode(text)
 
-logger.log_chat("Initializing embeddings model")
-embeddings = SentenceTransformerEmbeddings("nlpai-lab/KURE-v1")
+# Lazy loading for embeddings
+embeddings = None
+vector_store = None
+model = None
 
-logger.log_chat("Loading documents from data directory")
-loader = DirectoryLoader("data/", glob="*.md", loader_cls=TextLoader)
-docs = loader.load()
-logger.log_chat(f"Loaded {len(docs)} documents")
+def get_embeddings():
+    global embeddings
+    if embeddings is None:
+        logger.log_chat("Initializing embeddings model")
+        embeddings = SentenceTransformerEmbeddings("nlpai-lab/KURE-v1")
+    return embeddings
 
-logger.log_chat("Creating FAISS vector store")
-vector_store = FAISS.from_documents(docs, embeddings)
+def get_vector_store():
+    global vector_store
+    if vector_store is None:
+        logger.log_chat("Loading documents from data directory")
+        loader = DirectoryLoader("data/", glob="*.md", loader_cls=TextLoader)
+        docs = loader.load()
+        logger.log_chat(f"Loaded {len(docs)} documents")
+        
+        logger.log_chat("Creating FAISS vector store")
+        vector_store = FAISS.from_documents(docs, get_embeddings())
+    return vector_store
 
-logger.log_chat("Initializing Gemini model")
-try:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.0-flash')
-    logger.log_chat("Successfully initialized Gemini model")
-except Exception as e:
-    logger.log_error(f"Failed to initialize Gemini model: {str(e)}", exc_info=True)
-    raise
+def get_model():
+    global model
+    if model is None:
+        logger.log_chat("Initializing Gemini model")
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-2.0-flash')
+            logger.log_chat("Successfully initialized Gemini model")
+        except Exception as e:
+            logger.log_error(f"Failed to initialize Gemini model: {str(e)}", exc_info=True)
+            raise
+    return model
 
 def answer_query(query, chat_history=None):
     logger.log_chat(f"Processing query: {query}")
     
     try:
         logger.log_chat("Searching for relevant documents", level=logging.DEBUG)
-        relevant_docs = vector_store.similarity_search(query, k=3)
+        relevant_docs = get_vector_store().similarity_search(query, k=3)
         logger.log_chat(f"Found {len(relevant_docs)} relevant documents", level=logging.DEBUG)
         
         context = "\n".join([doc.page_content for doc in relevant_docs])
@@ -78,10 +105,10 @@ def answer_query(query, chat_history=None):
                 "explaining that the input was too long or contained potentially harmful content. "
                 "Keep the message brief and professional."
             )
-            return model.generate_content(error_prompt, stream=True)
+            return get_model().generate_content(error_prompt, stream=True)
         
         logger.log_chat("Generating response with Gemini model", level=logging.DEBUG)
-        response = model.generate_content(prompt, stream=True)
+        response = get_model().generate_content(prompt, stream=True)
         logger.log_chat("Response generation completed")
         
         return response

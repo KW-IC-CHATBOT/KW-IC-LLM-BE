@@ -1,13 +1,13 @@
-# Use Python 3.10 slim as base image
-FROM python:3.10-slim
+# Use Python 3.9 slim as base image
+FROM python:3.9-slim
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && apt-get clean \
+RUN apt-get update && apt-get install -y \
+    netcat-traditional \
+    net-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
@@ -30,7 +30,7 @@ RUN mkdir -p data
 ENV PYTHONUNBUFFERED=1
 
 # Expose the port
-EXPOSE 35504
+EXPOSE 35509
 
 # Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "35504", "--workers", "4"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "35509", "--workers", "1"]
