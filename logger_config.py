@@ -134,11 +134,8 @@ class ChatLogger:
         # DB 로깅
         self._log_to_db(level_name, type, message, details)
 
-    def log_system(self, message, type="system", level=logging.INFO, exc_info=None):
+    def log_system(self, message, type="system", level=logging.INFO, exc_info=None, details=None):
         """시스템 로깅        """
-        extra = {'user_id': self.user_id}
-        # 파일 로깅
-        self.logger.error(message, exc_info=exc_info, extra=extra)
         # DB 로깅
         details = None
         if exc_info:
@@ -148,13 +145,13 @@ class ChatLogger:
         
         self.log_chat(message=message, type=type, level=level, details=details)
 
-    def log_chat(self, type="chat", level=logging.INFO, message=None):
+    def log_chat(self, type="chat", level=logging.INFO, message=None, details=None):
         """사용자 쿼리 로깅
         type: chat, query, response, context
         level: INFO, WARNING
         message: 로깅할 메시지
         """
-        self._log_chat(message=message, type=type, level=level)
+        self._log_chat(message=message, type=type, level=level, details=details)
 
     # 애플리케이션 종료 시 데이터베이스 연결을 안전하게 닫기 위한 메서드 추가
     def __del__(self):
