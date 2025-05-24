@@ -111,7 +111,7 @@ async def websocket_endpoint(websocket: WebSocket):
             except json.JSONDecodeError:
                 query = raw_data
             
-            logger.log_chat(type="query", query=query)
+            logger.log_chat(type="query", message=query)
             
             try:
                 chat_history = manager.get_chat_history(websocket)
@@ -123,10 +123,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     await manager.send_personal_message(chunk.text, websocket)
                 
                 manager.add_to_history(websocket, query, full_response)
-                logger.log_chat(type="response", response=full_response)
+                logger.log_chat(type="response", message=full_response)
                 
                 await manager.send_personal_message("[EOS]", websocket)
-                logger.log_chat("Response streaming completed", level=logging.DEBUG)
                 
             except Exception as e:
                 logger.log_chat(message=f"Error processing query: {str(e)}, query: {query}", level=logging.ERROR, exc_info=True)
