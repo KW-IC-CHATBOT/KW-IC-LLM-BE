@@ -28,23 +28,23 @@ class ConnectionManager:
         self.active_connections: List[WebSocket] = []
         self.chat_histories: dict = {}  # Store chat histories per connection
         self.logger = ChatLogger("system")
-        self.logger.log_chat("ConnectionManager initialized")
+        self.logger.log_system("ConnectionManager initialized", level=logging.DEBUG)
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
         self.chat_histories[id(websocket)] = []  # Initialize empty chat history
-        self.logger.log_chat(f"New client connected. Total connections: {len(self.active_connections)}")
+        self.logger.log_system(f"New client connected. Total connections: {len(self.active_connections)}", level=logging.DEBUG)
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
         if id(websocket) in self.chat_histories:
             del self.chat_histories[id(websocket)]  # Clean up chat history
-        self.logger.log_chat(f"Client disconnected. Remaining connections: {len(self.active_connections)}")
+        self.logger.log_system(f"Client disconnected. Remaining connections: {len(self.active_connections)}", level=logging.DEBUG)
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
-        self.logger.log_chat(f"Message sent: {message[:100]}...", level=logging.DEBUG)
+        self.logger.log_system(f"Message sent: {message[:100]}...", level=logging.DEBUG)
 
     def add_to_history(self, websocket: WebSocket, query: str, response: str):
         if id(websocket) not in self.chat_histories:
@@ -72,7 +72,7 @@ async def health_check():
     }
 
 @app.post("/log/chat", response_model=ChatLogResponse)
-async def log_chat(chat_log: ChatLogRequest, db: Session = Depends(get_db)):
+async def chat_logging(chat_log: ChatLogRequest, db: Session = Depends(get_db)):
     try:
         db_chat = ChatMessageModel(
             session_id=chat_log.session_id,
@@ -111,7 +111,7 @@ async def websocket_endpoint(websocket: WebSocket):
             except json.JSONDecodeError:
                 query = raw_data
             
-            logger.log_query(type="query", query=query)
+            logger.log_chat(type="query", query=query)
             
             try:
                 chat_history = manager.get_chat_history(websocket)
@@ -123,23 +123,23 @@ async def websocket_endpoint(websocket: WebSocket):
                     await manager.send_personal_message(chunk.text, websocket)
                 
                 manager.add_to_history(websocket, query, full_response)
-                logger.log_response(type="response", response=full_response)
+                logger.log_chat(type="response", response=full_response)
                 
                 await manager.send_personal_message("[EOS]", websocket)
-                logger.log_info("Response streaming completed")
+                logger.log_chat("Response streaming completed", level=logging.DEBUG)
                 
             except Exception as e:
-                logger.log_error(message=f"Error processing query: {str(e)}", exc_info=True)
+                logger.log_chat(message=f"Error processing query: {str(e)}, query: {query}", level=logging.ERROR, exc_info=True)
                 await manager.send_personal_message("죄송합니다. 오류가 발생했습니다.", websocket)
             
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        logger.log_info("WebSocket connection disconnected", exc_info=True)
+        logger.log_system("WebSocket connection disconnected", exc_info=True, level=logging.DEBUG)
     except Exception as e:
-        logger.log_error(f"Unexpected error: {str(e)}", exc_info=True)
+        logger.log_system(f"Unexpected error: {str(e)}", exc_info=True, level=logging.ERROR)
         manager.disconnect(websocket)
 
 if __name__ == "__main__":
     logger = ChatLogger("system")
-    logger.log_info("Starting server on port 35504")
+    logger.log_system("Starting server on port 35504", level=logging.DEBUG)
     uvicorn.run(app, host="0.0.0.0", port=35504)

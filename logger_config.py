@@ -118,7 +118,7 @@ class ChatLogger:
             self.close_db()
 
     # 기존 로깅 메서드 수정 (데이터베이스 로깅 추가)
-    def log_chat(self, message, type="system", level=logging.INFO, details=None):
+    def _log_chat(self, message, type="system", level=logging.INFO, details=None):
         """채팅 메시지 로깅"""
         extra = {'user_id': self.user_id}
         level_name = logging.getLevelName(level)
@@ -134,8 +134,8 @@ class ChatLogger:
         # DB 로깅
         self._log_to_db(level_name, type, message, details)
 
-    def log_error(self, message, type="system", exc_info=None):
-        """에러 로깅"""
+    def log_system(self, message, type="system", level=logging.INFO, exc_info=None):
+        """시스템 로깅        """
         extra = {'user_id': self.user_id}
         # 파일 로깅
         self.logger.error(message, exc_info=exc_info, extra=extra)
@@ -146,33 +146,15 @@ class ChatLogger:
              import traceback
              details = traceback.format_exc()
         
-        self.log_chat(message=message, type=type, level=logging.ERROR, details=details)
+        self.log_chat(message=message, type=type, level=level, details=details)
 
-    def log_info(self, message, type="system", exc_info=None):
-        # DB 로깅
-        details = None
-        if exc_info:
-             # exc_info 정보를 문자열로 변환하여 details에 저장
-             import traceback
-             details = traceback.format_exc()
-        
-        self.log_chat(message=message, type=type, level=logging.INFO, details=details)
-
-    def log_query(self, type="query", query=None):
-        """사용자 쿼리 로깅"""
-        # print(f"[DEBUG] log_query called: {query}") # 디버깅용 출력 (기존 코드)
-        # 파일 로깅
-        self.log_chat(message=query, type=type, level=logging.INFO)
-
-    def log_response(self, type="response", response=None):
-        """봇 응답 로깅"""
-        # 파일 로깅
-        self.log_chat(message=response, type=type, level=logging.INFO)
-
-    def log_context(self, type="context", context=None):
-        """컨텍스트 정보 로깅"""
-        # 파일 로깅
-        self.log_chat(message=context, type=type, level=logging.DEBUG)
+    def log_chat(self, type="chat", level=logging.INFO, message=None):
+        """사용자 쿼리 로깅
+        type: chat, query, response, context
+        level: INFO, WARNING
+        message: 로깅할 메시지
+        """
+        self._log_chat(message=message, type=type, level=level)
 
     # 애플리케이션 종료 시 데이터베이스 연결을 안전하게 닫기 위한 메서드 추가
     def __del__(self):

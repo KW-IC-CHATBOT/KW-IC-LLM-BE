@@ -55,38 +55,36 @@ model = None
 def get_embeddings():
     global embeddings
     if embeddings is None:
-        logger.log_chat("Initializing embeddings model")
+        logger.log_system("Initializing embeddings model", level=logging.DEBUG)
         embeddings = SentenceTransformerEmbeddings("nlpai-lab/KURE-v1")
     return embeddings
 
 def get_vector_store():
     global vector_store
     if vector_store is None:
-        logger.log_chat("Loading documents from data directory")
+        logger.log_system("Loading documents from data directory", level=logging.DEBUG)
         loader = DirectoryLoader("data/", glob="*.md", loader_cls=TextLoader)
         docs = loader.load()
-        logger.log_chat(f"Loaded {len(docs)} documents")
+        logger.log_system(f"Loaded {len(docs)} documents", level=logging.DEBUG)
         
-        logger.log_chat("Creating FAISS vector store")
+        logger.log_system("Creating FAISS vector store", level=logging.DEBUG)
         vector_store = FAISS.from_documents(docs, get_embeddings())
     return vector_store
 
 def get_model():
     global model
     if model is None:
-        logger.log_chat("Initializing Gemini model")
+        logger.log_system("Initializing Gemini model", level=logging.DEBUG)
         try:
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel('gemini-2.0-flash')
-            logger.log_chat("Successfully initialized Gemini model")
+            logger.log_system("Successfully initialized Gemini model", level=logging.DEBUG)
         except Exception as e:
-            logger.log_error(f"Failed to initialize Gemini model: {str(e)}", exc_info=True)
+            logger.log_system(f"Failed to initialize Gemini model: {str(e)}", level=logging.ERROR, exc_info=True)
             raise
     return model
 
 def answer_query(query, chat_history=None):
-    logger.log_chat(f"Processing query: {query}")
-    
     try:
         logger.log_chat("Searching for relevant documents", level=logging.DEBUG)
         relevant_docs = get_vector_store().similarity_search(query, k=3)
@@ -98,7 +96,7 @@ def answer_query(query, chat_history=None):
         try:
             prompt = PromptSecurity.create_safe_prompt(context, query, chat_history)
         except ValueError as e:
-            logger.log_error(f"Security check failed: {str(e)}")
+            logger.log_chat(f"Security check failed: {str(e)}, query: {query}", level=logging.WARNING)
             # 에러 메시지를 생성 모델을 통해 반환
             error_prompt = (
                 "You are a helpful AI assistant. Please provide a polite error message "
@@ -107,15 +105,15 @@ def answer_query(query, chat_history=None):
             )
             return get_model().generate_content(error_prompt, stream=True)
         
-        logger.log_chat("Generating response with Gemini model", level=logging.DEBUG)
+        logger.log_system("Generating response with Gemini model", level=logging.DEBUG)
         response = get_model().generate_content(prompt, stream=True)
-        logger.log_chat("Response generation completed")
+        logger.log_system("Response generation completed", level=logging.DEBUG)
         
         return response
     except Exception as e:
-        logger.log_error(f"Error in answer_query: {str(e)}", exc_info=True)
+        logger.log_chat(f"Error in answer_query: {str(e)}", level=logging.ERROR, exc_info=True)
         raise
 
 if __name__ == "__main__":
-    logger.log_chat("Testing answer_query function")
+    logger.log_system("Testing answer_query function", level=logging.DEBUG)
     answer_query("딥러닝프로그래밍에 대해 알려줘")
