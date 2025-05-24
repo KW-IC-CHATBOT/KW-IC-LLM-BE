@@ -33,4 +33,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 35509
 
 # Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "35509", "--workers", "1"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "35504", "--workers", "1"]
