@@ -1,71 +1,16 @@
 services:
   app:
     build: .
-    ports:
-      - "35504:35509"
-    environment:
-      - PG_HOST=postgres
-      - PG_PORT=5432
-      - PG_DBNAME=postgres
-      - PG_USER=postgres
-      - PG_PASSWORD=whffu18
-    command: >
-      sh -c "
-        echo 'Waiting for postgres...' &&
-        while ! nc -z postgres 5432; do
-          sleep 1
-        done &&
-        echo 'PostgreSQL started' &&
-        uvicorn main:app --host 0.0.0.0 --port 35509 --workers 1
-      "
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-        reservations:
-          memory: 4G
+    container_name: kw_ic_app
     restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
+    ports:
+      - "35504:35504"
+    environment:
+      - APP_PORT=35504
+      - APP_HOST=host.docker.internal
     networks:
       - kw_ic_network
-
-  postgres:
-    build:
-      context: .
-      dockerfile: Dockerfile.postgres
-    ports:
-      - "5418:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=whffu18
-      - POSTGRES_DB=postgres
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U postgres && psql -U postgres -d postgres -c 'SELECT 1'",
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: always
-    networks:
-      - kw_ic_network
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 1G
 
 networks:
   kw_ic_network:
     driver: bridge
-
-volumes:
-  postgres_data:

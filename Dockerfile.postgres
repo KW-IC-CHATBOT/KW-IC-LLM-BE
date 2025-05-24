@@ -1,7 +1,0 @@
-FROM postgres:14
-
-# Install network tools
-RUN apt-get update && apt-get install -y \
-    net-tools \
-    netcat-traditional \
-    && rm -rf /var/lib/apt/lists/* 
