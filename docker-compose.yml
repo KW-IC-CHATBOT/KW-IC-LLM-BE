@@ -8,9 +8,35 @@ services:
     environment:
       - APP_PORT=35504
       - APP_HOST=host.docker.internal
+      - GEMINI_API=${GEMINI_API}
+      - PG_HOST=db
+      - PG_PORT=5432
+      - PG_USER=${PG_USER:-postgres}
+      - PG_PASSWORD=${PG_PASSWORD:-password}
+      - PG_DBNAME=${PG_DBNAME:-kw_ic_db}
+    depends_on:
+      - db
+    networks:
+      - kw_ic_network
+
+  db:
+    image: postgres:15
+    container_name: kw_ic_db
+    restart: always
+    environment:
+      - POSTGRES_USER=${PG_USER:-postgres}
+      - POSTGRES_PASSWORD=${PG_PASSWORD:-password}
+      - POSTGRES_DB=${PG_DBNAME:-kw_ic_db}
+    ports:
+      - "${PG_PORT:-5418}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - kw_ic_network
 
 networks:
   kw_ic_network:
     driver: bridge
+
+volumes:
+  postgres_data:

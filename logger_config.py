@@ -26,6 +26,7 @@ class ChatLogger:
         self.user_id = user_id
         self.logger = logging.getLogger(f"chat_logger_{user_id}")
         self.logger.setLevel(logging.INFO)
+        self.logger.propagate = False  # 상위 로거로의 전파 방지
         
         # 로거가 이미 핸들러를 가지고 있다면 중복 추가하지 않음
         if not self.logger.handlers:
@@ -70,6 +71,8 @@ class ChatLogger:
                 self.logger.info("PostgreSQL database connection closed")
             except Exception as e:
                 self.logger.error(f"Error closing database connection: {str(e)}", exc_info=True)
+            finally:
+                self.db = None
 
     def __del__(self):
         try:
@@ -103,15 +106,22 @@ class ChatLogger:
     def _log_to_db(self, level, log_type, message, details=None):
         """데이터베이스에 로그 저장"""
         if not self.db:
-            return
+            try:
+                self.connect_db()
+            except Exception:
+                return
 
         try:
             cursor = self.db.cursor()
             timestamp = datetime.now()
+            
+            # DB 필드 길이에 맞게 잘라내기
+            safe_log_type = str(log_type)[:50] if log_type else None
+            
             cursor.execute('''
                 INSERT INTO chat_logs (timestamp, user_id, log_level, log_type, message, details)
                 VALUES (%s, %s, %s, %s, %s, %s)
-            ''', (timestamp, self.user_id, level, log_type, message, details))
+            ''', (timestamp, self.user_id, level, safe_log_type, message, details))
             self.db.commit()
         except Exception as e:
             self.logger.error(f"Error logging to database: {e}", exc_info=True)

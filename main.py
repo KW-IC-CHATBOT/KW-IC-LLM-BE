@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPExcept
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from typing import List
-from llm import answer_query
+from agents import GeneralManagerAgent
 from logger_config import ChatLogger
 import logging 
 from sqlalchemy.orm import Session
@@ -58,6 +58,7 @@ class ConnectionManager:
         return self.chat_histories.get(id(websocket), [])
 
 manager = ConnectionManager()
+gm_agent = GeneralManagerAgent()
 
 @app.get("/")
 async def root():
@@ -93,6 +94,7 @@ async def chat_logging(chat_log: ChatLogRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.websocket("/ws")
+@app.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket):
     # 각 연결마다 고유한 로거 생성
     logger = ChatLogger(f"user_{id(websocket)}")
@@ -115,7 +117,7 @@ async def websocket_endpoint(websocket: WebSocket):
             
             try:
                 chat_history = manager.get_chat_history(websocket)
-                response = answer_query(query, chat_history)
+                response = await gm_agent.run(query, chat_history)
                 full_response = ""
                 
                 for chunk in response:

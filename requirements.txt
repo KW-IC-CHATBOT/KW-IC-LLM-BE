@@ -11,3 +11,4 @@ websockets
 psycopg2-binary
 sqlalchemy
 python-dotenv
+sentence-transformers

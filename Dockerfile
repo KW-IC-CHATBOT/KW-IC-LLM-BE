@@ -1,5 +1,5 @@
 # Use Python 3.9 slim as base image
-FROM python:3.9-slim
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY .env .
 
 # Install sentence transformers for embeddings
-RUN pip install -r requirements.txt --no-cache-dir
 
 # Copy application code
 COPY . .
