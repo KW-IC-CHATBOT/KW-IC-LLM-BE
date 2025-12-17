@@ -163,6 +163,10 @@ class ChatLogger:
         """
         self._log_chat(message=message, type=type, level=level, details=details)
 
+    def log_error(self, message, type="error", exc_info=True, details=None):
+        """에러 로깅 편의 메서드"""
+        self.log_system(message=message, type=type, level=logging.ERROR, exc_info=exc_info, details=details)
+
     # 애플리케이션 종료 시 데이터베이스 연결을 안전하게 닫기 위한 메서드 추가
     def __del__(self):
         self.close_db() 

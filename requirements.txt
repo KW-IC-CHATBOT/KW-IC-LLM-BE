@@ -11,4 +11,7 @@ websockets
 psycopg2-binary
 sqlalchemy
 python-dotenv
-sentence-transformers
+sentence-transformers>=3.0.0
+transformers>=4.40.0
+torch
+accelerate

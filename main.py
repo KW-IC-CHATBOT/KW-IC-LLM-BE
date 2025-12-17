@@ -12,7 +12,27 @@ from models.schemas import ChatLogRequest, ChatLogResponse
 from datetime import datetime
 import json
 
-app = FastAPI()
+from contextlib import asynccontextmanager
+from llm import preload_models
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Load models
+    logger = ChatLogger("system")
+    logger.log_system("Initializing application... Triggering model preload.", level=logging.INFO)
+    try:
+        preload_models()
+        # Initialize Agent here to prevent early loading
+        global gm_agent
+        gm_agent = GeneralManagerAgent()
+        logger.log_system("GeneralManagerAgent initialized.", level=logging.INFO)
+    except Exception as e:
+        logger.log_error(f"Startup failed: {e}")
+    
+    yield
+    # Shutdown logic
+    
+app = FastAPI(lifespan=lifespan)
 
 # CORS 미들웨어
 app.add_middleware(
@@ -58,7 +78,8 @@ class ConnectionManager:
         return self.chat_histories.get(id(websocket), [])
 
 manager = ConnectionManager()
-gm_agent = GeneralManagerAgent()
+# gm_agent is initialized in lifespan
+gm_agent = None
 
 @app.get("/")
 async def root():
@@ -130,7 +151,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await manager.send_personal_message("[EOS]", websocket)
                 
             except Exception as e:
-                logger.log_chat(message=f"Error processing query: {str(e)}, query: {query}", level=logging.ERROR, exc_info=True)
+                logger.log_system(message=f"Error processing query: {str(e)}, query: {query}", level=logging.ERROR, exc_info=True)
                 await manager.send_personal_message("죄송합니다. 오류가 발생했습니다.", websocket)
             
     except WebSocketDisconnect:
