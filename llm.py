@@ -119,7 +119,20 @@ def get_vector_store():
                                  page_content=chunk.strip(), 
                                  metadata={"source": filepath, "category": "regulation"}
                              ))
-                # -----------------------------------------------------------
+                
+                # ---------------- [학부명 메타데이터 태깅 로직] ----------------
+                # [Regulation]이 아니고, 특정 학부명이 포함된 경우
+                elif any(dept in filename for dept in ["소프트웨어학부", "정보융합학부", "컴퓨터정보공학부", "로봇학부"]):
+                    found_dept = next(dept for dept in ["소프트웨어학부", "정보융합학부", "컴퓨터정보공학부", "로봇학부"] if dept in filename)
+                    logger.log_system(f"Applying Standard Splitter for Department: {filename} ({found_dept})", level=logging.DEBUG)
+                    
+                    # 카테고리를 학부명으로 설정
+                    raw_doc = Document(page_content=content, metadata={"source": filepath, "category": found_dept})
+                    splits = basic_splitter.split_documents([raw_doc])
+                    docs.extend(splits)
+
+                # ---------------- [기본 로직 (General)] ----------------
+                # 그 외의 경우는 기존처럼 general로 처리
                 else:
                     logger.log_system(f"Applying Standard Splitter for: {filename}", level=logging.DEBUG)
                     raw_doc = Document(page_content=content, metadata={"source": filepath, "category": "general"})

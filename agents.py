@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 
@@ -55,9 +56,9 @@ class SourceOrganizerAgent:
         
         # Function to run in thread pool
         def search(query):
-            # 1. Broad Search (k=5)
-            # Increased from k=2 to k=5 to give reranker better candidates
-            candidate_docs = self.vector_store.similarity_search(query, k=5)
+            # 1. Broad Search (k=10)
+            # Reduced from k=15 to k=10 to balance speed/recall
+            candidate_docs = self.vector_store.similarity_search(query, k=10)
             
             if not candidate_docs:
                 return []
@@ -76,8 +77,8 @@ class SourceOrganizerAgent:
                 # Zip and sort by score descending
                 ranked_results = sorted(zip(candidate_docs, scores), key=lambda x: x[1], reverse=True)
                 
-                # Select Top 2 (Optimized for latency as requested)
-                top_k = 2
+                # Select Top 3 (Balanced)
+                top_k = 3
                 final_docs = [doc for doc, score in ranked_results[:top_k]]
                 
                 # Debug logging for scores
@@ -89,7 +90,7 @@ class SourceOrganizerAgent:
             except Exception as e:
                 self.logger.log_error(f"Reranking failed: {e}")
                 # Fallback to Top 2 from original similarity search if reranker fails
-                return candidate_docs[:2]
+                return candidate_docs[:3]
 
         # Run searches in parallel
         tasks = [
@@ -108,7 +109,23 @@ class SourceOrganizerAgent:
             for doc in docs:
                 if doc.page_content not in seen_content:
                     seen_content.add(doc.page_content)
-                    source_text = f"### Source (related to '{query_used}')\n{doc.page_content}\n"
+                    
+                    # Extract metadata with defaults
+                    meta = doc.metadata
+                    category = meta.get('category', 'General')
+                    source_file = meta.get('source', 'Unknown File')
+                    
+                    # Sanitize source_file to basename only (security + cleaner context)
+                    if source_file != 'Unknown File':
+                        source_file = os.path.basename(source_file)
+                    
+                    # Enhanced formatting with metadata
+                    source_text = (
+                        f"### Source (Query: '{query_used}')\n"
+                        f"- **Category**: {category}\n"
+                        f"- **File**: {source_file}\n"
+                        f"- **Content**:\n{doc.page_content}\n"
+                    )
                     formatted_sources.append(source_text)
         
         if not formatted_sources:
@@ -220,9 +237,13 @@ class GeneralManagerAgent:
              return [MockChunk("죄송합니다. 요청하신 내용이 보안 정책에 위배되어 답변할 수 없습니다.")]
 
         system_prompt = """
-        You are a helpful AI assistant for KW University (Kwangwoon University).
-        Use the provided User History and Retrieved Sources to answer the User Query.
-        If the sources do not contain the answer, politely say you don't know, but try to be helpful based on the context.
+        You are a smart and helpful assistant for Kwangwoon University (KW University).
+        
+        PRIMARY RULES:
+        1.  **Strictly grounded in sources**: You must base your answer *only* on the provided "Retrieved Sources". Do not hallucinate or use outside knowledge to answer specific university questions (e.g. credits, schedules) unless it is common knowledge or simple chitchat.
+        2.  **Context Awareness**: Pay attention to the 'Category' metadata in the sources (e.g., 'Software Dept', 'Regulation'). If different departments have conflicting rules, explain which rule applies to which department.
+        3.  **Honesty**: If the provided sources do NOT contain the answer, explicitly state that you cannot find the information in the current documents. Do not make up an answer.
+        4.  **Tone**: Be polite, concise, and professional.
         """
         
         final_prompt = f"""
