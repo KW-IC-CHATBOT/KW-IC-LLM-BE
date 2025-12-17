@@ -61,8 +61,6 @@ def get_reranker():
     if reranker is None:
         logger.log_system("Initializing Reranker model (BAAI/bge-reranker-v2-m3)...", level=logging.DEBUG)
         try:
-            # Using BAAI/bge-reranker-v2-m3 for high performance multilingual reranking
-            # Explicitly set device='cpu' to avoid "meta tensor" errors in some environments
             reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", max_length=512, device='cpu')
             logger.log_system("Successfully initialized Reranker model", level=logging.DEBUG)
         except Exception as e:
@@ -84,14 +82,12 @@ def get_vector_store():
         
         docs = []
         
-        # 1. Standard Splitter
+        # 1. Standard Splitter (일반 문서용)
         basic_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200
         )
         
-        # 2. Iterate through files directly to apply different strategies
-        # Assuming run from root, but check relative path if needed
         data_path = "data"
         if not os.path.exists(data_path):
             os.makedirs(data_path)
@@ -104,19 +100,29 @@ def get_vector_store():
                 with open(filepath, "r", encoding="utf-8") as f:
                     content = f.read()
                 
-                # Check if it's a rule/regulation file (학칙, 규정)
-                if "학칙" in filename or "규정" in filename:
-                    logger.log_system(f"Applying Regex Splitter for: {filename}", level=logging.DEBUG)
-                    # Split by "Article N" (제N조)
-                    # Lookahead assertion to keep the delimiter
-                    splits = re.split(r'(?=\n제\s*\d+\s*조)', content)
+                # ---------------- [최종 수정된 정규식 분할 로직] ----------------
+                # 파일명에 [Regulation] 태그가 있으면 무조건 정규식 스플리터 적용
+                if "[Regulation]" in filename:
+                    logger.log_system(f"Applying Regulation Regex Splitter for: {filename}", level=logging.DEBUG)
+                    
+                    # [부정형 전방탐색 적용]
+                    # 1. 줄바꿈(\n) 뒤에 '제N조' 또는 '제N장'이 와야 함
+                    # 2. 단, 그 바로 뒤에 조사(의,에,를,는,가,은)가 오면 안 됨 (참조 문구 제외)
+                    pattern = r'(?=\n\s*제\s*\d+\s*(?:조|장)(?![의에를는가은]))'
+                    
+                    splits = re.split(pattern, content)
                     
                     for chunk in splits:
                         if chunk.strip():
-                             docs.append(Document(page_content=chunk.strip(), metadata={"source": filepath}))
+                             # 메타데이터에 category 추가
+                             docs.append(Document(
+                                 page_content=chunk.strip(), 
+                                 metadata={"source": filepath, "category": "regulation"}
+                             ))
+                # -----------------------------------------------------------
                 else:
                     logger.log_system(f"Applying Standard Splitter for: {filename}", level=logging.DEBUG)
-                    raw_doc = Document(page_content=content, metadata={"source": filepath})
+                    raw_doc = Document(page_content=content, metadata={"source": filepath, "category": "general"})
                     splits = basic_splitter.split_documents([raw_doc])
                     docs.extend(splits)
                     
@@ -153,5 +159,3 @@ def preload_models():
         logger.log_system("All models preloaded successfully.", level=logging.INFO)
     except Exception as e:
         logger.log_error(f"Model preloading failed: {e}")
-        # We don't raise here to allow the server to start, 
-        # but the first request might fail or be slow if it retries.
