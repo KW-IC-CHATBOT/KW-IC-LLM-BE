@@ -4,7 +4,7 @@ import logging
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 
-from llm import get_vector_store, get_model
+from llm import get_vector_store, get_model, get_reranker
 from logger_config import ChatLogger
 from prompt_security import PromptSecurity
 
@@ -55,8 +55,41 @@ class SourceOrganizerAgent:
         
         # Function to run in thread pool
         def search(query):
-            docs = self.vector_store.similarity_search(query, k=2)
-            return docs
+            # 1. Broad Search (k=5)
+            # Increased from k=2 to k=5 to give reranker better candidates
+            candidate_docs = self.vector_store.similarity_search(query, k=5)
+            
+            if not candidate_docs:
+                return []
+            
+            try:
+                # 2. Reranking
+                ranker = get_reranker()
+                
+                # Prepare pairs for CrossEncoder: [[query, doc_content], ...]
+                pairs = [[query, doc.page_content] for doc in candidate_docs]
+                
+                # Predict scores (returns numpy array or list of floats)
+                scores = ranker.predict(pairs)
+                
+                # 3. Sort & Select Top K
+                # Zip and sort by score descending
+                ranked_results = sorted(zip(candidate_docs, scores), key=lambda x: x[1], reverse=True)
+                
+                # Select Top 2 (Optimized for latency as requested)
+                top_k = 2
+                final_docs = [doc for doc, score in ranked_results[:top_k]]
+                
+                # Debug logging for scores
+                for i, (doc, score) in enumerate(ranked_results[:top_k]):
+                     self.logger.log_system(f"Rerank Top-{i+1} Score: {score:.4f} | Content preview: {doc.page_content[:30]}...", level=logging.DEBUG)
+                     
+                return final_docs
+                
+            except Exception as e:
+                self.logger.log_error(f"Reranking failed: {e}")
+                # Fallback to Top 2 from original similarity search if reranker fails
+                return candidate_docs[:2]
 
         # Run searches in parallel
         tasks = [
@@ -118,11 +151,13 @@ class GeneralManagerAgent:
             
         except Exception as e:
             self.logger.log_error(f"Error in GeneralManagerAgent: {str(e)}")
-            # Return a generator that yields the error message
-            async def error_generator():
-                yield type('obj', (object,), {'text': "죄송합니다. 처리 중 오류가 발생했습니다."})
-            return error_generator()
+            # Define a simple MockChunk class to mimic Gemini response chunk
+            class MockChunk:
+                 def __init__(self, text):
+                     self.text = text
 
+            return [MockChunk("죄송합니다. 처리 중 오류가 발생했습니다.")]
+            
     async def _plan_sources(self, query: str, user_context: str) -> List[str]:
         self.logger.log_system(f"질문에 대한 자료 검색 계획 수립: {query}", type="agent_execution")
         prompt = f"""
@@ -132,9 +167,15 @@ class GeneralManagerAgent:
         User Query: {query}
         {user_context}
         
-        Identify the key topics or questions that need to be searched in the knowledge base.
-        Provide a list of specific search queries (max 3).
-        Return ONLY a JSON array of strings. Example: ["academic calendar 2024", "scholarship requirements"]
+        Instructions:
+        1. Analyze if the user's query requires external knowledge (e.g., school rules, schedules, contact info).
+        2. If the query is simple chitchat (e.g., "hello", "thank you"), general knowledge, or can be answered from history, DO NOT search.
+        3. If search is needed, provide a list of specific search queries (max 3).
+        4. If NO search is needed, return an empty JSON array `[]`.
+        
+        Return ONLY a JSON array of strings. 
+        Example (Search needed): ["scholarship requirements", "student cafeteria location"]
+        Example (No search): []
         """
         
         try:
@@ -163,6 +204,12 @@ class GeneralManagerAgent:
             f"답변 생성 시작 - 컨텍스트 길이 {len(user_context)}, 자료 길이 {len(sources)}",
             type="agent_execution"
         )
+        
+        # Mock Chunk for errors
+        class MockChunk:
+             def __init__(self, text):
+                 self.text = text
+
         # Check security
         try:
             # We construct a mock context for the security check since it expects a string
@@ -170,9 +217,7 @@ class GeneralManagerAgent:
             # Safe prompt creation might fail if content is unsafe
             _ = PromptSecurity.create_safe_prompt(full_context, query, []) 
         except ValueError as e:
-             async def error_gen():
-                 yield type('obj', (object,), {'text': "죄송합니다. 요청하신 내용이 보안 정책에 위배되어 답변할 수 없습니다."})
-             return error_gen()
+             return [MockChunk("죄송합니다. 요청하신 내용이 보안 정책에 위배되어 답변할 수 없습니다.")]
 
         system_prompt = """
         You are a helpful AI assistant for KW University (Kwangwoon University).
@@ -201,7 +246,4 @@ class GeneralManagerAgent:
             return response
         except Exception as e:
             self.logger.log_error(f"Generation failed: {e}")
-            async def error_gen():
-                yield type('obj', (object,), {'text': "죄송합니다. 답변 생성 중 오류가 발생했습니다."})
-            return error_gen()
-
+            return [MockChunk("죄송합니다. 답변 생성 중 오류가 발생했습니다.")]
